@@ -1,0 +1,163 @@
+---
+title: "final_project"
+author: "Eden Doron, Tomer Goldstein"
+date: "8/20/2021"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First we will load the data from the paper's dataset and organize the matrix to be with clean data only.
+```{r loading data}
+data <- read.csv('./E-MTAB-2758-raw-counts.tsv', header = T, sep = '\t', row.names = 'Gene.ID')
+
+data_matrix <- as.matrix(data)
+gene_map <- data_matrix[ ,c(1)]
+raw_data <- data_matrix[, -1]
+
+experiment_design_data <- read.csv('./E-MTAB-2758-experiment-design.tsv', header = T, sep = '\t', row.names = 1, stringsAsFactors = T)
+experiment_design <- experiment_design_data[, c(11, 13)]
+colnames(experiment_design) <- c('Time', 'Control')
+```
+
+Sort column names according to sample number
+```{r sort data}
+raw_data <- apply(raw_data, MARGIN=c(1,2), FUN=as.integer)
+raw_data_colnames <- colnames(raw_data)
+sorted_raw_data <- stringr::str_sort(raw_data_colnames)
+raw_data <- raw_data[, sorted_raw_data]
+```
+
+Next, we will perform differential expression on the sorted samples and normalize it as seen in the tutorial
+```{r differential expression}
+library(DESeq2)
+
+dds <- DESeqDataSetFromMatrix(countData = raw_data,
+                              colData = experiment_design,
+                              design = ~ Time + Control)
+table <- head(assay(dds))
+
+dds <- dds[rowSums(counts(dds)) > 1,]
+
+vsd <- vst(dds, blind = FALSE)
+vsd_raw_data <- vst(raw_data, blind = FALSE)
+rownames(vsd_raw_data) <- gene_map[rownames(vsd_raw_data)]
+dds_analysis <- DESeq(dds)
+res <- results(dds_analysis)
+
+vsd_subset <- vsd_raw_data[c("GPR84","SERPINE1","PDGFB","NIPAL4","LIF", "FOSL1"),]
+scaled_vsd_subset <- t(scale(t(vsd_subset)))
+```
+
+Presenting heatmap after calculating the distances between samples
+```{r}
+library ("pheatmap")
+library ("RColorBrewer")
+
+sampleDists <- dist(t(assay(vsd)))
+
+sampleDistMatrix <- as.matrix( sampleDists )
+rownames(sampleDistMatrix) <- paste(vsd$Control, vsd$Time, sep = " - ")
+colors <- colorRampPalette( rev(brewer.pal(9, "Reds")) )(255)
+
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors)
+```
+
+Heatmap with top 6 genes
+```{r}
+anno <- as.data.frame(colData(vsd)[, c("Control","Time")])
+pheatmap(scaled_vsd_subset, annotation_col = anno)
+```
+
+Conducting a DESeq analysis and filtering the results by a log2 fold change threshold of 1 as well as taking the most up-regulated and down-regulated genes with a adjusted p-value smaller than 0.1.
+```{r }
+library("EnhancedVolcano")
+EnhancedVolcano(res, lab = gene_map[rownames(res)], 
+                x = 'log2FoldChange', y = 'pvalue',
+                selectLab = c("GPR84", "SERPINE1", "PDGFB", "LIF", "NIPAL4", "FOSL1"),
+                title = 'Volcano Plot',
+                labSize = 6, pCutoff = 10e-20, FCcutoff = 1)
+```
+
+```{r}
+res <- results(dds_analysis, lfcThreshold = 1)
+summary(res)
+
+
+resSig <- subset(res, padj < 0.1)
+down_regulated <- head(resSig[ order(resSig$log2FoldChange), ])
+rownames(down_regulated) <- gene_map[rownames(down_regulated)]
+down_regulated <- data.frame(down_regulated)
+
+up_regulated <- head(resSig[order(resSig$log2FoldChange, decreasing = TRUE), ])
+rownames(up_regulated) <- gene_map[rownames(up_regulated)]
+up_regulated <- data.frame(up_regulated)
+
+```
+
+Clustring
+```{r}
+library("factoextra")
+library("Rtsne")
+set.seed(42)
+
+experiment_design <- experiment_design_data[, c(1, 11, 13)]
+colnames(experiment_design) <- c('Sample', 'Time', 'Control')
+
+raw_data_clean <- raw_data[rowSums(raw_data[, -1]) > 0 , ]
+scaled_data <- scale(na.omit(t(raw_data_clean)))
+
+fviz_nbclust(scaled_data, kmeans, method = "silhouette")
+fviz_nbclust(scaled_data, kmeans, method = "wss")
+
+km_result2 <- kmeans(scaled_data, centers = 2, nstart = 25)
+km_result5 <- kmeans(scaled_data, centers = 5, nstart = 25)
+
+tsne <- Rtsne(t(raw_data), perplexity = 5)
+
+plot(tsne$Y, col = km_result2$cluster)
+plot(tsne$Y, col = km_result5$cluster)
+
+clusters_by_treatment <- as.vector(experiment_design$Control)
+clusters_by_treatment[clusters_by_treatment == "control"] <- 1
+clusters_by_treatment[clusters_by_treatment == "osmium_based_compound"] <- 2
+clusters_by_treatment <- as.integer(clusters_by_treatment)
+names(clusters_by_treatment) <- experiment_design$Sample
+
+plot(tsne$Y, col = clusters_by_treatment)
+legend("bottomright",
+       legend = c("Control", "Osmium Based Compound"),
+       fill = 1:2, bty = 'n', ncol = 3,
+       cex = 0.5)
+
+clusters_by_time <- as.vector(experiment_design$Time)
+clusters_by_time[clusters_by_time == "0_hour"] <- 1
+clusters_by_time[clusters_by_time == "4_hour"] <- 2
+clusters_by_time[clusters_by_time == "12_hour"] <- 3
+clusters_by_time[clusters_by_time == "24_hour"] <- 4
+clusters_by_time[clusters_by_time == "48_hour"] <- 5
+clusters_by_time <- as.integer(clusters_by_time)
+names(clusters_by_time) <- experiment_design$Sample
+
+plot(tsne$Y, col = clusters_by_time)
+legend("bottomright",
+       legend = c("0 hour", "4 hour", "12 hour", "24 hour", "48 hour"),
+       fill = 1:5,
+       cex = 0.5)
+
+hc_result <- hclust(dist(scaled_data), method = "ward.D")
+hc_clusters <- cutree(hc_result, k = 2)
+plot(tsne$Y, col = hc_clusters)
+
+hc_result <- hclust(dist(scaled_data), method = "ward.D2")
+hc_clusters <- cutree(hc_result, k = 5)
+plot(tsne$Y, col = hc_clusters)
+```
+
