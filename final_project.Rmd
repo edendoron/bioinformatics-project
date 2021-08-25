@@ -13,13 +13,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 First we will load the data from the paper's dataset and organize the matrix to be with clean data only.
 ```{r loading data}
-data <- read.csv('./E-MTAB-2758-raw-counts.tsv', header = T, sep = '\t', row.names = 'Gene.ID')
+data <- read.csv('./data/E-MTAB-2758-raw-counts.tsv', header = T, sep = '\t', row.names = 'Gene.ID')
 
 data_matrix <- as.matrix(data)
 gene_map <- data_matrix[ ,c(1)]
 raw_data <- data_matrix[, -1]
 
-experiment_design_data <- read.csv('./E-MTAB-2758-experiment-design.tsv', header = T, sep = '\t', row.names = 1, stringsAsFactors = T)
+experiment_design_data <- read.csv('./data/E-MTAB-2758-experiment-design.tsv', header = T, sep = '\t', row.names = 1, stringsAsFactors = T)
 experiment_design <- experiment_design_data[, c(11, 13)]
 colnames(experiment_design) <- c('Time', 'Control')
 ```
