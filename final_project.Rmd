@@ -73,6 +73,9 @@ pheatmap(sampleDistMatrix,
 Heatmap with top 6 genes
 ```{r}
 anno <- as.data.frame(colData(vsd)[, c("Control","Time")])
+# removing 0 hour samples
+anno <- anno[-c(1,2,3,4,5,6), ]
+scaled_vsd_subset <- scaled_vsd_subset[, -c(1,2,3,4,5,6)]
 pheatmap(scaled_vsd_subset, annotation_col = anno)
 ```
 
@@ -117,6 +120,7 @@ scaled_data <- scale(na.omit(t(raw_data_clean)))
 fviz_nbclust(scaled_data, kmeans, method = "silhouette")
 fviz_nbclust(scaled_data, kmeans, method = "wss")
 
+# kmeans
 km_result2 <- kmeans(scaled_data, centers = 2, nstart = 25)
 km_result5 <- kmeans(scaled_data, centers = 5, nstart = 25)
 
@@ -125,6 +129,16 @@ tsne <- Rtsne(t(raw_data), perplexity = 5)
 plot(tsne$Y, col = km_result2$cluster)
 plot(tsne$Y, col = km_result5$cluster)
 
+# hclust
+hc_result <- hclust(dist(scaled_data), method = "ward.D")
+hc_clusters <- cutree(hc_result, k = 2)
+plot(tsne$Y, col = hc_clusters)
+
+hc_result <- hclust(dist(scaled_data), method = "ward.D")
+hc_clusters <- cutree(hc_result, k = 5)
+plot(tsne$Y, col = hc_clusters)
+
+# manual clustring by labels
 clusters_by_treatment <- as.vector(experiment_design$Control)
 clusters_by_treatment[clusters_by_treatment == "control"] <- 1
 clusters_by_treatment[clusters_by_treatment == "osmium_based_compound"] <- 2
@@ -132,10 +146,6 @@ clusters_by_treatment <- as.integer(clusters_by_treatment)
 names(clusters_by_treatment) <- experiment_design$Sample
 
 plot(tsne$Y, col = clusters_by_treatment)
-legend("bottomright",
-       legend = c("Control", "Osmium Based Compound"),
-       fill = 1:2, bty = 'n', ncol = 3,
-       cex = 0.5)
 
 clusters_by_time <- as.vector(experiment_design$Time)
 clusters_by_time[clusters_by_time == "0_hour"] <- 1
@@ -147,17 +157,5 @@ clusters_by_time <- as.integer(clusters_by_time)
 names(clusters_by_time) <- experiment_design$Sample
 
 plot(tsne$Y, col = clusters_by_time)
-legend("bottomright",
-       legend = c("0 hour", "4 hour", "12 hour", "24 hour", "48 hour"),
-       fill = 1:5,
-       cex = 0.5)
-
-hc_result <- hclust(dist(scaled_data), method = "ward.D")
-hc_clusters <- cutree(hc_result, k = 2)
-plot(tsne$Y, col = hc_clusters)
-
-hc_result <- hclust(dist(scaled_data), method = "ward.D2")
-hc_clusters <- cutree(hc_result, k = 5)
-plot(tsne$Y, col = hc_clusters)
 ```
 
